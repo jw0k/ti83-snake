@@ -129,25 +129,20 @@ initSnake:
     ;copy initial snake values
     ld HL, initialSnakeStart
     ld DE, snake
-    ld BC, (initialSnakeEnd-initialSnakeStart)
+    ld BC, initialSnakeEnd-initialSnakeStart
     ldir
 
     ;fill rest with zeros
-    ld HL, snake + (initialSnakeEnd-initialSnakeStart)
-    ld DE, snake + (initialSnakeEnd-initialSnakeStart) + 1
-    ld BC, 12*8*2-(initialSnakeEnd-initialSnakeStart) - 1
-    ld (HL), 0
-    ldir
+    ;ld HL, snake + (initialSnakeEnd-initialSnakeStart)
+    ;ld DE, snake + (initialSnakeEnd-initialSnakeStart) + 1
+    ;ld BC, 12*8*2-(initialSnakeEnd-initialSnakeStart) - 1
+    ;ld (HL), 0
+    ;ldir
 
     ret
 
 initialSnakeStart
-    .db $21, $88 ; column, row
-    .db $22, $88
-    .db $23, $88
-    .db $24, $88
-    .db $25, $88
-    .db $26, $88
+    .db $11, $21, $31, $41, $51, $61
 initialSnakeEnd
 
 
@@ -163,32 +158,28 @@ randomizeFood:
 
     ret
 
-checkSelfCollission:
+setHLToHead:
     ld BC, (snakelen)
     ld B, 0
-    dec C
-    sla C
+    dec BC
     ld HL, snake
     add HL, BC
+    ret
+
+checkSelfCollission:
+    call setHLToHead
     ld DE, snake-1
     ld A, (snakelen)
     ld C, A
     dec C
+
     ; DE = tail-1, HL = head, C = snakelen-1
 
 collissionLoop:
     inc DE
     ld A, (DE)
     cp (HL)
-    inc DE
-    jr nz, collissionStep
-    inc HL
-    ld A, (DE)
-    cp (HL)
     jr z, collissionYes
-    dec HL
-
-collissionStep:
     dec C
     jr nz, collissionLoop
 
@@ -206,7 +197,6 @@ moveSnake:
     ld hl, snake
     ld de, oldTail
     ldi
-    ldi
 
     ld A, (direction)
     cp 3
@@ -218,131 +208,141 @@ moveSnake:
 
 right:
     call copyLastCell
-    ld A, (newSnakeCell)
-    inc A
-    cp $2C
-    jr nz, rightO
-    ld A, $20
+    ld A, (newsnakecell)
+    add A, $10
+    cp $C0
+    jr c, rightO
+    and $0F
 rightO
-    ld (newSnakeCell), A
+    ld (newsnakecell), A
     jr moveSnakeEnd
 
 down:
     call copyLastCell
-    ld A, (newSnakeCell+1)
-    add A, 8
-    cp $C0
-    jr nz, downO
-    ld A, $80
+    ld A, (newsnakecell)
+    inc A
+    bit 3, A
+    jr z, downO
+    and $F0
 downO
-    ld (newSnakeCell+1), A
+    ld (newsnakecell), A
     jr moveSnakeEnd
 
 left:
     call copyLastCell
-    ld A, (newSnakeCell)
-    dec A
-    cp $1F
-    jr nz, leftO
-    ld A, $2B
+    ld A, (newsnakecell)
+    sub A, $10
+    jp p, leftO
+    and $BF
 leftO
-    ld (newSnakeCell), A
+    ld (newsnakecell), A
     jr moveSnakeEnd
 
 up:
     call copyLastCell
-    ld A, (newSnakeCell+1)
-    sub A, 8
-    cp $78
+    ld A, (newsnakecell)
+    and $0F
+    ld A, (newsnakecell)
     jr nz, upO
-    ld A, $B8
+    or $08
 upO
-    ld (newSnakeCell+1), A
+    dec A
+    ld (newsnakecell), A
     ;jr moveSnakeEnd
 
 moveSnakeEnd:
-    ld bc, (snakelen)
-    ld b, 0
-    dec c
-    sla c
-    ld hl, snake
-    inc hl
-    inc hl
-    ld de, snake
+    ld BC, (snakelen)
+    ld B, 0
+    dec C
+
+    ld HL, snake
+    inc HL
+    ld DE, snake
     ldir
 
-    ld hl, snake
-    ld de, (snakelen)
-    ld d, 0
-    sla e
-    add hl, de
-    dec hl
-    ld de, newSnakeCell+1
-    ex de, hl
-    ldd
+    ; DE is pointing at snake's head
+
+    ld HL, newsnakecell
     ldd
 
     ret
+
 
 copyLastCell
-    ld hl, snake
-    ld de, (snakelen)
-    ld d, 0
-    sla e
-    add hl, de
-    dec hl
-    ld de, newSnakeCell+1
-    ldd
+    call setHLToHead
+    ld DE, newsnakecell
     ldd
     ret
+
+
+;kolumny $20 - $2B (12 kolumn)
+;wiersze:
+;0: $80
+;1: $88
+;2: $90
+;3: $98
+;4: $A0
+;5: $A8
+;6: $B0
+;7: $B8
+drawCell: ; input: HL - cell data, C==0 -> blank cell (for erasing the tail); C==$FF -> black cell
+    ld A, (HL)
+    and $F0
+    srl A
+    srl A
+    srl A
+    srl A
+    or $20
+    out ($10), A
+    call _lcd_busy   ; probably can be commented out
+    ld A, (HL)
+    and $0F
+    sla A
+    sla A
+    sla A
+    add A, $80
+    out ($10), A
+    call _lcd_busy
+
+    ld A, C
+    out ($11), A
+    call _lcd_busy
+    out ($11), A
+    call _lcd_busy
+    out ($11), A
+    call _lcd_busy
+    out ($11), A
+    call _lcd_busy
+    out ($11), A
+    call _lcd_busy
+    out ($11), A
+    call _lcd_busy
+    out ($11), A
+    call _lcd_busy
+    out ($11), A
+    call _lcd_busy
+
+    ret
+
 
 drawSnake:
     ld A, (snakelen)
     ld B, A ; B - snake length
     ld HL, snake
-
+    ld C, $FF
 drawSnakeLoop:
-    ;kolumny $20 - $2B (12 kolumn)
-    ;wiersze:
-    ;0: $80
-    ;1: $88
-    ;2: $90
-    ;3: $98
-    ;4: $A0
-    ;5: $A8
-    ;6: $B0
-    ;7: $B8
-
-    ld A, (HL)
-    out ($10), A
-    call _lcd_busy
+    call drawCell
     inc HL
-    ld A, (HL)
-    out ($10), A
-    call _lcd_busy
-    inc HL
-    ld A, $FF
-    call drawSquare
-
     dec B
     jr nz, drawSnakeLoop
-
     ret
 
 eraseTail:
     ld HL, oldtail
-
-    ld A, (HL)
-    out ($10), A
-    call _lcd_busy
-    inc HL
-    ld A, (HL)
-    out ($10), A
-    call _lcd_busy
-
-    ld A, 0
-    call drawSquare
+    ld C, 0
+    call drawCell
     ret
+
 
 setupScreen:
     ld A, $05 ;set X auto-increment
@@ -350,35 +350,17 @@ setupScreen:
     call _lcd_busy
     ret
 
-drawSquare:
-    out ($11), A
-    call _lcd_busy
-    out ($11), A
-    call _lcd_busy
-    out ($11), A
-    call _lcd_busy
-    out ($11), A
-    call _lcd_busy
-    out ($11), A
-    call _lcd_busy
-    out ($11), A
-    call _lcd_busy
-    out ($11), A
-    call _lcd_busy
-    out ($11), A
-    call _lcd_busy
-    ret
 
 delayValue
     .dw $3800
+snakelen
+    .db $06 ; snake length
 direction
     .db $00 ; 0=right, 1=down, 2=left, 3=up
 food
-    .db $00, $00
-newSnakeCell
-    .db $00, $00
+    .db $00
+newsnakecell
+    .db $00
 oldtail
-    .db $20, $88
-snakelen
-    .db $06 ; snake length
+    .db $01
 
