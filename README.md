@@ -12,7 +12,7 @@ Use `spasm-ng` to assemble the code:
 ```
 $spasm snake.asm snake.83p
 ```
-If you use older version of `spasm-ng`, run:
+If you use an older version of `spasm-ng`, run:
 ```
 $python fix83p.py snake.83p snakeFixed.83p
 ```
