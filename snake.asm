@@ -3,17 +3,20 @@
 #define EQU .equ
 #define end .end
 
-;#include "../ti83asm.inc"
-#include "../tokens.inc"
-#include "../squish.inc"
+;#include "ti83asm.inc"
+#include "tokens.inc"
+#include "squish.inc"
 .LIST
 
 #define b_call(X) CALL X
 
 ;there are 531 bytes of free space starting at STATVARS
 ;to use it we have to call _DelRes first to invalidate the statistic results
-snake          equ STATVARS       ; array of snake cells
-freecells      equ snake + (12*8) ; array of free cells. ends with $FF
+snake          equ STATVARS            ; array of snake cells
+freecells      equ snake + (12*8)      ; array of free cells. ends with $FF
+food           equ freecells + (12*8)  ; food position
+newsnakecell   equ food + 1
+oldtail        equ newsnakecell + 1
 
 .org 9327h
 
@@ -35,8 +38,19 @@ gameLoop:
     call drawSnake
     call drawFood
 
-    ;delay and read keyboard
-    ld DE, (delayValue)
+    ld A, (snakelen)
+    sub A, 3
+    srl A
+    srl A
+    sla A
+    ld C, A
+    ld B, 0
+    ld HL, delayValues
+    add HL, BC
+    ld E, (HL)
+    inc HL
+    ld D, (HL)
+
     ld A, (direction)
     ld B, A
 delayLoop
@@ -46,7 +60,7 @@ delayLoop
     nop
     in A, (1)
     cp $BF ;clear
-    jr z, quit
+    jr z, quitWithoutMessage
 
     ld A, $FE ;down, left, right, up
     out (1), A
@@ -105,11 +119,76 @@ delayEnd:
     call checkSelfCollission
     jr c, quit
 
-    jr gameLoop
+    jp gameLoop
     ;ret
 
+shake:
+    ld HL, shakeValues
+
+shakeLoop
+    ld A, (HL)
+    inc HL
+    cp A, $FF
+    jr z, shakeEnd
+    out ($10), A
+
+    ld B, 5
+    ei
+_   halt
+    djnz -_
+    di
+
+    jr shakeLoop
+
+shakeEnd
+    ld A, $40
+    out ($10), A
+
+    ret
+
+quitWithoutMessage:
+    call _clrScrnFull
+    ei
+    ret
+
 quit:
-    call _ClrLCDFull
+    call shake
+
+    call _clrScrnFull
+
+    ld A, 0
+    ld (CURROW), A
+    ld A, 0
+    ld (CURCOL), A
+    ld HL, byeMessage1
+    call _puts
+    ld A, 1
+    ld (CURROW), A
+    ld A, 0
+    ld (CURCOL), A
+    ld HL, byeMessage2
+    call _puts
+
+    ld A, (score)
+    cp 10
+    jr c, lessThan10
+    ld H, 0
+    ld L, A
+    call _divHLby10
+    ld B, A
+    ld A, L
+    add A, '0'
+    call _putc
+    ld A, B
+lessThan10:
+    add A, '0'
+    call _putc
+
+    ld A, 2
+    ld (CURROW), A
+    ld A, 0
+    ld (CURCOL), A
+
     ei
     ret
 
@@ -230,7 +309,14 @@ randomizeFood:
     ;call _ConvOP1    ;1175 T-states
     ;now A is a random number between 0 and 95 inclusive
 
+    ld A, (snakelen)
+    cp 12*8
+    jr nz, randomizeFoodContinue
+    ld A, $FF
+    ld (food), A
+    ret
 
+randomizeFoodContinue:
     ld HL, freecells
     ld A, R
     ld B, A
@@ -370,6 +456,9 @@ moveSnakeEnd:
     call removeFreeCell
 
     call randomizeFood
+
+    ld IX, score
+    inc (IX)
     ret
 
 noFoodCollission:
@@ -461,10 +550,13 @@ emptyCellData:
     .db $00, $00, $00, $00, $00, $00, $00, $00
 
 drawFood:
+    ld A, (food)
+    cp $FF
+    jr z, _
     ld DE, food
     ld HL, foodData
     call drawBlock
-    ret
+_   ret
 foodData:
     .db $18, $7E, $FF, $FF, $FF, $FF, $7E, $18
 
@@ -603,21 +695,34 @@ setupScreen:
     ret
 
 
-
 INITALSNAKELEN equ 3
+;INITALSNAKELEN equ 80
 
-delayValue
-    .dw $3800
+delayValues ; for snake lengths 3, 7, 11, ..., 95
+    .dw $3803, $318A, $2BE8, $2700, $22BA, $1F03, $1BC6, $18F5, $1681, $145E, $1282, $10E4
+    .dw $0F7B, $0E41, $0D30, $0C42, $0B73, $0ABF, $0A22, $0999, $0922, $08BB, $0860, $0812
+    ;.dw $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803
+    ;.dw $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803, $3803
 snakelen
     .db INITALSNAKELEN ; snake length
 direction
     .db $00 ; 0=right, 1=down, 2=left, 3=up
-food
-    .db $00
-newsnakecell
-    .db $00
-oldtail
-    .db $01
 initialSnakeStart
     .db $11, $21, $31
+    ;.db $00, $10, $20, $30, $40, $50, $60, $70, $80, $90, $A0, $B0
+    ;.db $B1, $A1, $91, $81, $71, $61, $51, $41, $31, $21, $11, $01
+    ;.db $02, $12, $22, $32, $42, $52, $62, $72, $82, $92, $A2, $B2
+    ;.db $B3, $A3, $93, $83, $73, $63, $53, $43, $33, $23, $13, $03
+    ;.db $04, $14, $24, $34, $44, $54, $64, $74, $84, $94, $A4, $B4
+    ;.db $B5, $A5, $95, $85, $75, $65, $55, $45, $35, $25, $15, $05
+    ;.db $06, $16, $26, $36, $46, $56, $66, $76
 initialSnakeEnd
+shakeValues
+    .db $40, $46, $40, $46, $40, $46, $40, $45, $40, $45, $40, $42, $40, $42, $40, $41
+    .db $40, $40, $41, $40, $40, $40, $40, $40, $40, $40, $40, $40, $40, $40, $40, $FF
+score
+    .db $00
+byeMessage1
+    .db "Zjedzonych", 0
+byeMessage2
+    .db "jablek: ", 0
